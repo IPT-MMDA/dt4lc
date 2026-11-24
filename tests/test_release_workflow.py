@@ -1,6 +1,7 @@
 """The tag-triggered GitHub Release must give working instructions (docker.yml)."""
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 from typing import Any
@@ -69,3 +70,12 @@ def test_dev_builds_publish_but_latest_stays_on_master() -> None:
         assert latest == [
             "type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}"
         ], job
+
+
+def test_startup_installs_the_deploy_program_unchanged() -> None:
+    """startup.sh carries its own copy of ssh-deploy.sh: the release it checks out may predate the program."""
+    startup = (ROOT / "deploy" / "gcp" / "startup.sh").read_text(encoding="utf-8")
+    program = (ROOT / "deploy" / "gcp" / "ssh-deploy.sh").read_text(encoding="utf-8")
+    copy = re.search(r"<<'PROGRAM'\n(.*?\n)PROGRAM\n", startup, flags=re.S)
+    assert copy is not None
+    assert copy.group(1) == program
