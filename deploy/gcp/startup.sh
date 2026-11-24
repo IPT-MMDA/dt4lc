@@ -8,6 +8,9 @@
 # DT4LC_GEE_PROJECT names the Earth Engine project, used there with a service account's key file;
 # DT4LC_DEPLOY_KEY, a public key line, creates the account that .github/workflows/deploy.yml uses.
 set -euo pipefail
+# Fed over SSH, the script arrives on stdin, where a prompt (dpkg's, say) would read its next lines.
+# So bash reads the whole block before running it, and nothing in the block reads stdin.
+{
 MARK=/var/lib/dt4lc/provisioned
 [ -f "$MARK" ] && exit 0
 # Each input: the environment variable, else the instance attribute when this is a Google Cloud VM
@@ -182,3 +185,4 @@ if [[ $GEE_CREDENTIALS == GEE_SERVICE_ACCOUNT_KEY=* ]]; then
   echo "dt4lc: copy the Earth Engine service account's key to /opt/dt4lc/resources/key_gee.json (root, mode 600)"
 fi
 echo "dt4lc: provisioned for $DOMAIN at $REF; complete /opt/dt4lc/.env and run deploy/gcp/finish.sh"
+} </dev/null
