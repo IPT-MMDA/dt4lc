@@ -1,5 +1,11 @@
 # Optional Cloud DNS zone for the domain. After `apply`, set the registrar's nameservers to the
 # `name_servers` output; until then, the same two A records can be created at the registrar.
+# The apex and www records point at the Google VM, or at demo_address when the demo runs on a host
+# outside this configuration.
+
+locals {
+  demo_address = var.demo_address != "" ? var.demo_address : google_compute_address.demo.address
+}
 
 resource "google_dns_managed_zone" "demo" {
   count       = var.manage_dns ? 1 : 0
@@ -15,7 +21,7 @@ resource "google_dns_record_set" "apex" {
   name         = "${var.domain}."
   type         = "A"
   ttl          = 300
-  rrdatas      = [google_compute_address.demo.address]
+  rrdatas      = [local.demo_address]
 }
 
 resource "google_dns_record_set" "www" {
@@ -24,5 +30,5 @@ resource "google_dns_record_set" "www" {
   name         = "www.${var.domain}."
   type         = "A"
   ttl          = 300
-  rrdatas      = [google_compute_address.demo.address]
+  rrdatas      = [local.demo_address]
 }
