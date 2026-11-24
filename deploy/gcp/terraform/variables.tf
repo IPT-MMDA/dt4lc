@@ -50,6 +50,12 @@ variable "manage_dns" {
   default     = true
 }
 
+variable "demo_address" {
+  description = "An address outside this configuration for the apex and www records, such as a host outside Google Cloud. Empty: the Google VM's static address."
+  type        = string
+  default     = ""
+}
+
 variable "github_repository" {
   description = "owner/name of the GitHub repository whose Actions may deploy to the host (Workload Identity Federation, no stored key). Empty disables the CI identity."
   type        = string
