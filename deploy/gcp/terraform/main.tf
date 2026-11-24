@@ -17,6 +17,7 @@ resource "google_project_service" "apis" {
 }
 
 resource "google_compute_address" "demo" {
+  count      = var.demo_vm ? 1 : 0
   name       = "${var.vm_name}-ip"
   region     = var.region
   depends_on = [google_project_service.apis]
@@ -66,6 +67,7 @@ data "google_compute_image" "debian" {
 }
 
 resource "google_compute_instance" "demo" {
+  count                     = var.demo_vm ? 1 : 0
   name                      = var.vm_name
   machine_type              = var.machine_type
   zone                      = var.zone
@@ -83,7 +85,7 @@ resource "google_compute_instance" "demo" {
   network_interface {
     network = "default"
     access_config {
-      nat_ip = google_compute_address.demo.address
+      nat_ip = google_compute_address.demo[0].address
     }
   }
 

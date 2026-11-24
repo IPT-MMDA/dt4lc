@@ -56,6 +56,12 @@ variable "demo_address" {
   default     = ""
 }
 
+variable "demo_vm" {
+  description = "Create the demo VM and its static address. Set false, together with demo_address, once the demo runs on a host outside this configuration."
+  type        = bool
+  default     = true
+}
+
 variable "github_repository" {
   description = "owner/name of the GitHub repository whose Actions may deploy to the host (Workload Identity Federation, no stored key). Empty disables the CI identity."
   type        = string
