@@ -8,3 +8,4 @@ ref     = "v0.6.2"
 # manage_dns   = true
 # dev_vm       = true   # a second host for the dev branch at dev.<domain> (dev.tf)
 # demo_address = "203.0.113.10"   # the apex and www records point at a host outside Google Cloud
+# demo_vm      = false            # with demo_address: no demo VM and no static address here

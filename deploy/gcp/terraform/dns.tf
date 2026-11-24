@@ -1,10 +1,10 @@
 # Optional Cloud DNS zone for the domain. After `apply`, set the registrar's nameservers to the
 # `name_servers` output; until then, the same two A records can be created at the registrar.
 # The apex and www records point at the Google VM, or at demo_address when the demo runs on a host
-# outside this configuration.
+# outside this configuration (so demo_vm = false needs demo_address).
 
 locals {
-  demo_address = var.demo_address != "" ? var.demo_address : google_compute_address.demo.address
+  demo_address = var.demo_address != "" ? var.demo_address : google_compute_address.demo[0].address
 }
 
 resource "google_dns_managed_zone" "demo" {

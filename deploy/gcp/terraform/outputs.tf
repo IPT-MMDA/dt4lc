@@ -1,5 +1,5 @@
 output "static_ip" {
-  value = google_compute_address.demo.address
+  value = var.demo_vm ? google_compute_address.demo[0].address : null
 }
 
 output "name_servers" {
@@ -12,7 +12,7 @@ output "earth_engine_service_account" {
 }
 
 output "ssh" {
-  value = "gcloud compute ssh ${var.vm_name} --zone ${var.zone} --tunnel-through-iap"
+  value = var.demo_vm ? "gcloud compute ssh ${var.vm_name} --zone ${var.zone} --tunnel-through-iap" : null
 }
 
 output "github_actions_variables" {
