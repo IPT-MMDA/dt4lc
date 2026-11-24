@@ -1,6 +1,7 @@
 """The tag-triggered GitHub Release must give working instructions (docker.yml)."""
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 from typing import Any
@@ -69,3 +70,32 @@ def test_dev_builds_publish_but_latest_stays_on_master() -> None:
         assert latest == [
             "type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}"
         ], job
+
+
+def test_startup_installs_the_deploy_program_unchanged() -> None:
+    """startup.sh carries its own copy of ssh-deploy.sh: the release it checks out may predate the program."""
+    startup = (ROOT / "deploy" / "gcp" / "startup.sh").read_text(encoding="utf-8")
+    program = (ROOT / "deploy" / "gcp" / "ssh-deploy.sh").read_text(encoding="utf-8")
+    copy = re.search(r"<<'PROGRAM'\n(.*?\n)PROGRAM\n", startup, flags=re.S)
+    assert copy is not None
+    assert copy.group(1) == program
+
+
+def test_deploy_pins_the_ssh_host_key_and_keeps_the_iap_commands() -> None:
+    """A host outside Google Cloud is reached over SSH only with its pinned key; Google hosts keep IAP."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8"))
+    steps = {step["name"]: step for step in workflow["jobs"]["app"]["steps"]}
+    configure = steps["Configure the host from its environment"]["run"]
+    assert "-o StrictHostKeyChecking=yes" in configure
+    assert '-o UserKnownHostsFile="$RUNNER_TEMP/known_hosts"' in configure
+    assert "accept-new" not in configure and "StrictHostKeyChecking=no" not in configure
+    assert (
+        '--command "sudo git -C /opt/dt4lc fetch -q --tags origin && sudo git -C /opt/dt4lc checkout -q --detach '
+        "'${{ needs.target.outputs.checkout }}' && sudo /opt/dt4lc/deploy/gcp/configure.sh\""
+    ) in configure
+    assert (
+        '--command "sudo /opt/dt4lc/deploy/gcp/update.sh '
+        "'${{ needs.target.outputs.ref }}' '${{ needs.target.outputs.tag }}'\""
+    ) in steps["Update the host"]["run"]
+    for name in ("Authenticate to Google Cloud", "Set up gcloud", "Update the host"):
+        assert steps[name]["if"] == "vars.DEPLOY_SSH_HOST == ''", name

@@ -7,16 +7,20 @@ All notable changes to DT4LC are listed here, newest first. The format is based 
 ### Added
 
 - A dev host: a second VM of the same size as the demo serves the latest `dev` branch at <https://dev.dt4lc.org>. Every push to `dev` that changes more than documentation publishes the `dev` images and deploys them through a GitHub environment `dev.dt4lc.org`, which holds the host's own OAuth app and sets `GUEST_ANALYSES_PER_HOUR=0`: anyone may look, only signed-in team members run analyses. Terraform creates it with `dev_vm = true` ([deploy/gcp/README.md](deploy/gcp/README.md#the-dev-host)).
+- The deployment kit on a host outside Google Cloud: `startup.sh`, fed over SSH, provisions a plain Debian or Ubuntu host. Earth Engine there uses a service account's key file (`DT4LC_GEE_PROJECT`). With `DT4LC_DEPLOY_KEY` the script also creates a deploy account whose key can only deploy a release, `master` or `dev`: a forced command and one sudoers rule run the new `deploy/gcp/ssh-deploy.sh` and nothing else ([deploy/gcp/README.md](deploy/gcp/README.md#a-host-outside-google-cloud)).
+- SSH deploys, chosen per environment: when the target environment sets `DEPLOY_SSH_HOST`, `deploy.yml` sends its values and the ref over SSH to that account, with the host key pinned (`DEPLOY_SSH_KNOWN_HOSTS`, the secret `DEPLOY_SSH_KEY`); without it, the deploy goes through IAP as before. The Terraform variable `demo_address` points the `dt4lc.org` and `www` records at such a host.
 
 ### Fixed
 
 - A manual deploy took any text after a release tag's digits as its ref, and that text reached the command run on the host; the deploy now accepts only a release tag, `master` or `dev`.
+- A second run of `startup.sh` after a failed one stopped at Caddy's repository key, asking on a terminal it did not have whether to overwrite the file; it now overwrites it.
 
 ### Changed
 
 - Who can deploy is who can get a commit onto `master`, a `v*` tag or `dev`: the CI identity on Google Cloud trusts only jobs of the deploy environments (`dt4lc.org`, `dev.dt4lc.org`), a manual image build publishes only from `master`, `dev` or a `v*` tag, and the sync deploy key lives in a `sync-dev` environment limited to `master`. A workflow on any other branch can neither deploy, nor overwrite a published image, nor push to `dev`.
 - The host scripts follow any branch: the image tag is derived from it, a branch other than `master` is checked out as `origin/<branch>`, and the `www` redirect is written only for an apex domain.
 - The `Release gate` admits `deploy/gcp/` and the workflow test in `docs/*` and `ci/*` pull requests (CONTRIBUTING).
+- `startup.sh` takes each input from an environment variable first (`DT4LC_DOMAIN`, `DT4LC_REF`, `DT4LC_IMAGE_TAG`), then from the instance attribute when the Google metadata server answers, then from the default, so it no longer stops off Google Cloud. It picks Docker's repository for Debian or Ubuntu, and it reads its whole text before running any of it, so a prompt cannot swallow the rest of a script fed over SSH.
 
 ## [0.6.2] - 2026-11-03
 
