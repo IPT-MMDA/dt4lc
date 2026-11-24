@@ -2,15 +2,24 @@
 # First-boot provisioning of the DT4LC demo host (runs as root; a marker makes later boots a no-op):
 # Docker Engine with the Compose v2 plugin, Caddy, the repository at the requested ref, and a .env
 # with every non-secret value of docs/DEPLOY_DEMO.md section 2. Secrets are added by a person.
+# On Google Cloud it is the VM's startup script and reads the instance attributes. On a plain Debian
+# or Ubuntu host it is fed over SSH with its inputs in the environment (deploy/gcp/README.md):
+#   ssh <user>@<host address> "sudo DT4LC_DOMAIN=... DT4LC_REF=... bash -s" < deploy/gcp/startup.sh
+# DT4LC_GEE_PROJECT names the Earth Engine project, used there with a service account's key file.
 set -euo pipefail
 MARK=/var/lib/dt4lc/provisioned
 [ -f "$MARK" ] && exit 0
-MD=http://metadata.google.internal/computeMetadata/v1/instance/attributes
-DOMAIN=$(curl -sf -H 'Metadata-Flavor: Google' "$MD/dt4lc-domain" || echo dt4lc.org)
-REF=$(curl -sf -H 'Metadata-Flavor: Google' "$MD/dt4lc-ref" || echo v0.6.2)
-PROJECT=$(curl -sf -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/project/project-id)
-# Image tag: the dt4lc-image-tag attribute, else derived from the ref as the image build tags it:
-# v0.6.2 -> 0.6.2, master -> latest, another branch -> its name with / as - (dev -> dev).
+# Each input: the environment variable, else the instance attribute when this is a Google Cloud VM
+# (its metadata server answers with its own header; probed once and briefly), else the default.
+MD=http://metadata.google.internal/computeMetadata/v1
+GCE=false
+probe=$(curl -s -m 3 -o /dev/null -D - -H 'Metadata-Flavor: Google' "$MD/" || true)
+[[ ${probe,,} == *'metadata-flavor: google'* ]] && GCE=true
+md() { $GCE && curl -sf -H 'Metadata-Flavor: Google' "$MD/$1"; }   # md <path>: the value, or fail
+DOMAIN=${DT4LC_DOMAIN:-$(md instance/attributes/dt4lc-domain || echo dt4lc.org)}
+REF=${DT4LC_REF:-$(md instance/attributes/dt4lc-ref || echo v0.6.2)}
+# Image tag: DT4LC_IMAGE_TAG or the dt4lc-image-tag attribute, else derived from the ref as the image
+# build tags it: v0.6.2 -> 0.6.2, master -> latest, another branch -> its name with / as - (dev -> dev).
 image_tag() {
   case "$1" in
     v[0-9]*) echo "${1#v}" ;;
@@ -27,19 +36,32 @@ caddyfile() {  # caddyfile <domain> <template>
     *) sed "s/dt4lc\.org/$1/g" "$2" ;;
   esac
 }
-TAG=$(curl -sf -H 'Metadata-Flavor: Google' "$MD/dt4lc-image-tag" || true)
+TAG=${DT4LC_IMAGE_TAG:-$(md instance/attributes/dt4lc-image-tag || true)}
 [ -n "$TAG" ] || TAG=$(image_tag "$REF")
+# Earth Engine. On Google Cloud: this project, as the VM's service account (no key file). Elsewhere,
+# with DT4LC_GEE_PROJECT: that project, as a service account whose key a person copies to
+# /opt/dt4lc/resources/key_gee.json (resources/ is /app/resources in the backend container).
+GEE_PROJECT='' GEE_CREDENTIALS=''
+if $GCE; then
+  GEE_PROJECT=$(md project/project-id)
+  GEE_CREDENTIALS=GEE_USE_DEFAULT_CREDENTIALS=true
+elif [ -n "${DT4LC_GEE_PROJECT:-}" ]; then
+  GEE_PROJECT=$DT4LC_GEE_PROJECT
+  GEE_CREDENTIALS=GEE_SERVICE_ACCOUNT_KEY=/app/resources/key_gee.json
+fi
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -q
 apt-get install -y -q ca-certificates curl git gnupg openssl python3
 install -m 0755 -d /etc/apt/keyrings
-# Docker's repository: Debian's own docker.io package has no Compose plugin.
-curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+# Docker's repository for this distribution (debian or ubuntu): their own docker.io package has no
+# Compose plugin.
+DISTRO=$(. /etc/os-release && echo "$ID")
+curl -fsSL "https://download.docker.com/linux/$DISTRO/gpg" -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/$DISTRO $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
   > /etc/apt/sources.list.d/docker.list
-# Caddy's repository.
+# Caddy's repository (the same line for Debian and Ubuntu).
 curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt > /etc/apt/sources.list.d/caddy-stable.list
 apt-get update -q
@@ -60,7 +82,7 @@ if [ ! -f "$ENV" ]; then
   cp /opt/dt4lc/.env.example "$ENV"
   chmod 600 "$ENV"
   # Published images (docker-compose.ghcr.yml); drop that file from COMPOSE_FILE to build from source.
-  # Earth Engine: this project, as the VM's service account (no key file).
+  # Earth Engine as chosen above; an empty value is skipped.
   DT4LC_ENV="$ENV" bash /opt/dt4lc/deploy/gcp/configure.sh <<PAIRS
 COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml:docker-compose.ghcr.yml
 DT4LC_IMAGE_TAG=$TAG
@@ -73,8 +95,8 @@ GUEST_CLEANUP_MINUTES=60
 OAUTH_REDIRECT_BASE=https://$DOMAIN
 FRONTEND_PORT=127.0.0.1:8080
 LLM_ENABLE_OLLAMA=false
-GEE_PROJECT_ID=$PROJECT
-GEE_USE_DEFAULT_CREDENTIALS=true
+GEE_PROJECT_ID=$GEE_PROJECT
+$GEE_CREDENTIALS
 PAIRS
   cat >> "$ENV" <<'NOTE'
 
@@ -86,4 +108,7 @@ NOTE
 fi
 mkdir -p /opt/dt4lc/resources/.cache
 mkdir -p "$(dirname "$MARK")" && date -u +%FT%TZ > "$MARK"
+if [[ $GEE_CREDENTIALS == GEE_SERVICE_ACCOUNT_KEY=* ]]; then
+  echo "dt4lc: copy the Earth Engine service account's key to /opt/dt4lc/resources/key_gee.json (root, mode 600)"
+fi
 echo "dt4lc: provisioned for $DOMAIN at $REF; complete /opt/dt4lc/.env and run deploy/gcp/finish.sh"
